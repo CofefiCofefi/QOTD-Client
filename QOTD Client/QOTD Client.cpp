@@ -74,18 +74,11 @@ int main(int argc, char* argv[])
 
     ZeroMemory(&hints, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
 
-    const char* DEFAULT_HOST = "PE-HRFIELDS-1";
-    const char* DEFAULT_PORT = "17";
-    const char* host = DEFAULT_HOST;
-    const char* port = DEFAULT_PORT;
-
-    ZeroMemory(&hints, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
+    const char* host = "PE-HRFIELDS-1";
+    const char* port = "17";
 
     iResult = getaddrinfo(host, port, &hints, &result);
     if (iResult != 0) {
@@ -94,15 +87,61 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    SOCKET ConnectSocket = INVALID_SOCKET;
-    ConnectSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    if (ConnectSocket == INVALID_SOCKET) {
-        cout << "Error at socket(): " << WSAGetLastError() << endl;
+    SOCKET ClientSocket = INVALID_SOCKET;
+    ClientSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (ClientSocket == INVALID_SOCKET) {
+        cout << "Error at socket(): " << WSAGetLastError();
         freeaddrinfo(result);
         WSACleanup();
         return 1;
     }
+
+    freeaddrinfo(result);
+
+    int recvbuflen = DEFAULT_BUFLEN;
+    char recvbuf[DEFAULT_BUFLEN];
+    char sendbuf[DEFAULT_BUFLEN];
+
+    bool quote_received = true;
+
+    cout << "Command to send? ";
+    cin.getline(sendbuf, DEFAULT_BUFLEN);
+    toUpperCase(sendbuf);
+
+    while ((_stricmp(sendbuf, "quit") != 0)) {
+        iResult = sendto(ClientSocket, sendbuf, strlen(sendbuf) + 1, 0, result->ai_addr, result->ai_addrlen);
+        if (iResult == SOCKET_ERROR) {
+            cout << "send failed: " << WSAGetLastError() << endl;
+            closesocket(ClientSocket);
+            WSACleanup();
+            return 1;
+        }
+        sockaddr_in senderAddr;
+        int senderAddrSize = sizeof(senderAddr);
+        toUpperCase(sendbuf);
+
+        if ((_stricmp(sendbuf, "sendqotd") == 0)) {
+            cout << "\nQuote of the Day:\n";
+            do {
+                iResult = recvfrom(ClientSocket, recvbuf, recvbuflen, 0, (sockaddr*)&senderAddr, &senderAddrSize);
+                if (iResult > 0) {
+                    recvbuf[iResult] = '\0';
+                    cout << recvbuf << endl;
+                }
+                else if (iResult == 0) {
+                    cout << "No more data received." << endl;
+                }
+                else {
+                    cout << "recvfrom failed: " << WSAGetLastError() << endl;
+                    break;
+                }
+            } while (wait(ClientSocket, 1, 0) > 0);
+        }
+        cout << "Command to send? ";
+        cin.getline(sendbuf, DEFAULT_BUFLEN);
+    }
+
+    closesocket(ClientSocket);
+    WSACleanup();
+    return 0;
 }
-
-
-//Test for trev
